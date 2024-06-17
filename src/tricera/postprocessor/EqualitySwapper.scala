@@ -66,6 +66,7 @@ object ToExplicitForm {
   } 
 
   def invariant(expr: IExpression, valueSet: ValSet, cci: ContractConditionInfo) = {
+    println("EqualitySwapper is using valueSet: ", valueSet)
     EqualitySwapper.invariant(expr, valueSet.toExplicitFormMap, cci)
   } 
 }
@@ -76,6 +77,7 @@ object EqualitySwapper {
   }
 
   def invariant(expr: IExpression, swapMap: Map[IExpression, ITerm], cci: ContractConditionInfo) = {
+    println("EqualitySwapper is using swapMap: ", swapMap)
     (new InvariantEqualitySwapper(swapMap, cci))(expr)
   }
 }

@@ -51,6 +51,64 @@ object Val {
   }
 }
 case class Val(variants: Set[ITerm]) {
+  def getRepresentative: Option[ITerm] = {
+    /*
+    def countISortedVariables(term: ITerm): Int = {
+      term match {
+        case IConstant(c) => 0
+        case IIntLit(value) => 0
+        case ISortedVariable(index, sort) => 1
+        case IFunApp(fun, args) => args.map(countISortedVariables).sum
+        case IPlus(t1, t2) => countISortedVariables(t1) + countISortedVariables(t2)
+        case ITimes(coeff, subterm) => countISortedVariables(subterm)
+        // TODO: 2024-06-12 -- Figure out if it is relevant to take care of other types of terms.
+        case _ => 0
+      }
+    }
+    */
+    def collectISortedVariables(foundVars: Set[Int], term: ITerm): Set[Int] = {
+      term match {
+        case IConstant(c) => foundVars
+        case IIntLit(value) => foundVars
+        case ISortedVariable(index, sort) => foundVars + index
+        case IFunApp(fun, args) => 
+           args.foldLeft(foundVars)(collectISortedVariables)
+        case IPlus(t1, t2) =>
+          collectISortedVariables(collectISortedVariables(foundVars, t1), t2)
+        case ITimes(coeff, subterm) => collectISortedVariables(foundVars, subterm)
+        // TODO: 2024-06-12 -- Figure out if it is relevant to take care of other types of terms.
+        case _ => foundVars
+      }
+    }
+
+    variants
+      .toList
+      .filter {
+        case a: Address         => false
+        case v: ISortedVariable => false
+        case _                  => true
+      }
+      .map{
+        // First element of tuple is intended as a sort order priority
+        case t @ IIntLit(value) => (Int.MaxValue, t)
+        case t @ IConstant(c) => (Int.MaxValue - 1, t)
+        case t @ IFunApp(fun, args) if (fun.name.startsWith("O_")) && (fun.arity == 1) =>
+          // Term is of heap object type "O_<sort>"
+           (Int.MaxValue - 2, t)
+        case t @ IFunApp(fun, args) => 
+           (args.foldLeft(Set[Int]())(collectISortedVariables).size, t)
+        case t @ IPlus(t1, t2) =>
+          (collectISortedVariables(collectISortedVariables(Set.empty, t1), t2).size, t)
+        case t @ ITimes(coeff, subterm) =>
+          (collectISortedVariables(Set.empty, subterm).size, t)
+        // TODO: 2024-06-12 -- Figure out if it is relevant to take care of other types of terms.
+        case t => (0, t)
+      }
+      .sortWith( (a,b) => a._1 >= b._1)
+      .headOption
+      .map( t => t._2)
+  }
+
   def getExplicitForm: Option[ITerm] = variants find {
     case a: Address         => false
     case v: ISortedVariable => false
@@ -189,8 +247,8 @@ case class ValSet(vals: Set[Val]) {
   def toExplicitFormMap: Map[IExpression, ITerm] = {
     vals
       .collect {
-        case value if value.getExplicitForm.isDefined =>
-          val variable = value.getExplicitForm.get
+        case value if value.getRepresentative.isDefined =>
+          val variable = value.getRepresentative.get
           value.variants
             .filterNot(_ == variable)
             .map(_ -> variable)
